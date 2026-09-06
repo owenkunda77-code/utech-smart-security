@@ -1,0 +1,14 @@
+{
+  "name": "utech-smart-security",
+  "version": "1.0.0",
+  "description": "UTECH Smart Security Services - GPS tracking, monitoring, and recovery platform for valuable assets",
+  "private": true,
+  "scripts": {
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install && cd ../mobile && npm install",
+    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
+    "build": "cd backend && npm run build && cd ../frontend && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}

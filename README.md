@@ -1,8 +1,8 @@
-# U-TECH Enterprise - Smart Asset Security Services
+# Smart Asset Security
 
 A comprehensive GPS tracking, monitoring, and recovery platform for valuable assets (phones, laptops, vehicles, motorcycles).
 
-**Tagline**: Your Assets. Our Priority | Security in your hands!
+**Tagline**: Smart Asset Security — Protecting what matters most.
 
 ## Features
 
@@ -89,4 +89,4 @@ Lusaka, Zambia
 
 ---
 
-**Thank you for choosing U-TECH Enterprise!** 🛡️
+**Thank you for choosing Smart Asset Security!** 🛡️

@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Light Smart Asset Security",
+    "slug": "light-smart-asset-security",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "splash": {
+      "backgroundColor": "#0A3D8A"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.utech.lightsmartassetsecurity"
+    }
+  }
+}

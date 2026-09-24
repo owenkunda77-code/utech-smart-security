@@ -22,6 +22,13 @@ export const SECURITY_FEATURES = [
   'Live Camera & Mic Access',
 ];
 
+export const PAYMENT_PROVIDERS = {
+  dpo: 'DPO',
+  mtn_momo: 'MTN Mobile Money',
+  airtel_money: 'Airtel Money',
+  zamtel_kwacha: 'Zamtel Kwacha',
+};
+
 export const DEFAULT_PLANS = [
   { name: 'FREE', price: 0, featureIndexes: [0, 1, 2], permissions: [], misplacedMode: false },
   { name: 'ECONOMY', price: 25, featureIndexes: [0, 1, 2, 3, 9, 10, 11], permissions: ['location'], misplacedMode: true },
@@ -40,12 +47,26 @@ export async function loadPlans() {
   });
 }
 
-export async function requestDpoPayment({ deviceId, plan, phoneNumber, provider = 'dpo' }) {
+export async function requestPayment({ deviceId, plan, phoneNumber, provider = 'mtn_momo' }) {
   const idempotencyKey = `${deviceId || 'unknown'}-${plan.name}-${Date.now()}`;
   const { data, error } = await supabase.functions.invoke('create-payment', {
-    body: { deviceId, plan: plan.name, phoneNumber, provider, idempotencyKey },
+    body: {
+      deviceId,
+      plan: plan.name,
+      phoneNumber,
+      provider,
+      idempotencyKey,
+    },
   });
-  return { data, error };
+
+  if (error) {
+    return {
+      data: null,
+      error: error.message || 'The payment service is currently unavailable.',
+    };
+  }
+
+  return { data, error: null };
 }
 
 export async function saveSubscription({ deviceId, plan, permissionsGranted, paymentId }) {

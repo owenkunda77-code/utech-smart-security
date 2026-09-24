@@ -4,34 +4,46 @@ import * as Location from 'expo-location';
 import { Camera } from 'expo-camera';
 import { Accelerometer } from 'expo-sensors';
 import { Audio } from 'expo-av';
-import { DEFAULT_PLANS, SECURITY_FEATURES, loadPlans, requestDpoPayment, saveSubscription } from './supabase';
+import {
+  DEFAULT_PLANS,
+  PAYMENT_PROVIDERS,
+  SECURITY_FEATURES,
+  loadPlans,
+  requestPayment,
+  saveSubscription,
+} from './supabase';
 
 const BLUE = '#0A3D8A';
 const ACTION_BLUE = '#0A84FF';
-const PROVIDERS = ['DPO', 'MTN Mobile Money', 'Airtel Money', 'Zamtel Kwacha'];
+const PROVIDERS = ['MTN Mobile Money', 'DPO', 'Airtel Money', 'Zamtel Kwacha'];
 
 async function requestPermissions(plan) {
   const granted = {};
+
   if (plan.permissions.includes('camera')) {
     const result = await Camera.requestCameraPermissionsAsync();
     if (result.status !== 'granted') throw new Error('Camera permission was not granted.');
     granted.camera = true;
   }
+
   if (plan.permissions.includes('location')) {
     const result = await Location.requestForegroundPermissionsAsync();
     if (result.status !== 'granted') throw new Error('Location permission was not granted.');
     granted.location = true;
   }
+
   if (plan.permissions.includes('sensors')) {
     const subscription = Accelerometer.addListener(() => {});
     subscription.remove();
     granted.sensors = true;
   }
+
   if (plan.permissions.includes('microphone')) {
     const result = await Audio.requestPermissionsAsync();
     if (result.status !== 'granted') throw new Error('Microphone permission was not granted.');
     granted.microphone = true;
   }
+
   return granted;
 }
 
@@ -40,25 +52,50 @@ export default function PlansScreen({ onBack, deviceId = 'demo-device' }) {
   const [busy, setBusy] = useState(null);
   const [open, setOpen] = useState({});
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [provider, setProvider] = useState('DPO');
+  const [provider, setProvider] = useState('MTN Mobile Money');
 
-  useEffect(() => { loadPlans().then(setPlans); }, []);
+  useEffect(() => {
+    loadPlans().then(setPlans);
+  }, []);
 
   const subscribe = async (plan) => {
     setBusy(plan.name);
     try {
       const permissionsGranted = await requestPermissions(plan);
+
       if (plan.price === 0) {
         const result = await saveSubscription({ deviceId, plan, permissionsGranted });
         if (result.error) throw result.error;
         Alert.alert('Subscription active', `${plan.name} is now active.`);
         return;
       }
-      if (!phoneNumber.trim()) throw new Error('Enter the mobile number or payment number for the selected provider.');
-      const providerKey = provider === 'DPO' ? 'dpo' : provider === 'MTN Mobile Money' ? 'mtn_momo' : provider === 'Airtel Money' ? 'airtel_money' : 'zamtel_kwacha';
-      const payment = await requestDpoPayment({ deviceId, plan, phoneNumber: phoneNumber.trim(), provider: providerKey });
-      if (payment.error) throw payment.error;
-      Alert.alert('Payment requested', payment.data?.message || 'Your payment request has been sent. Please wait for confirmation.');
+
+      if (!phoneNumber.trim()) {
+        throw new Error('Enter the mobile or payment number for the selected provider.');
+      }
+
+      const providerKey =
+        provider === 'MTN Mobile Money'
+          ? 'mtn_momo'
+          : provider === 'DPO'
+            ? 'dpo'
+            : provider === 'Airtel Money'
+              ? 'airtel_money'
+              : 'zamtel_kwacha';
+
+      const payment = await requestPayment({
+        deviceId,
+        plan,
+        phoneNumber: phoneNumber.trim(),
+        provider: providerKey,
+      });
+
+      if (payment.error) throw new Error(payment.error);
+
+      Alert.alert(
+        'Payment request sent',
+        `${PAYMENT_PROVIDERS[providerKey]} has received your request. Please wait for confirmation before your plan is activated.`
+      );
     } catch (error) {
       Alert.alert('Payment not completed', error?.message || 'Please try again.');
     } finally {
@@ -69,19 +106,61 @@ export default function PlansScreen({ onBack, deviceId = 'demo-device' }) {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Security Plans</Text>
-      <Text style={styles.subtitle}>Zambia-first payment flow using DPO and mobile money providers.</Text>
-      <Pressable style={styles.back} onPress={onBack}><Text style={styles.buttonText}>Back</Text></Pressable>
-      <TextInput style={styles.input} value={phoneNumber} onChangeText={setPhoneNumber} placeholder="Payment number e.g. 097xxxxxxx" keyboardType="phone-pad" />
+      <Text style={styles.subtitle}>Zambia-ready payment flow using MTN, DPO, and local mobile-money providers.</Text>
+
+      <Pressable style={styles.back} onPress={onBack}>
+        <Text style={styles.buttonText}>Back</Text>
+      </Pressable>
+
+      <TextInput
+        style={styles.input}
+        value={phoneNumber}
+        onChangeText={setPhoneNumber}
+        placeholder="Payment number e.g. 097xxxxxxx"
+        keyboardType="phone-pad"
+      />
+
       <Text style={styles.label}>Payment provider</Text>
-      <View style={styles.providerRow}>{PROVIDERS.map((item) => <Pressable key={item} style={[styles.provider, provider === item && styles.selected]} onPress={() => setProvider(item)}><Text>{item}</Text></Pressable>)}</View>
+      <View style={styles.providerRow}>
+        {PROVIDERS.map((item) => (
+          <Pressable
+            key={item}
+            style={[styles.provider, provider === item && styles.selected]}
+            onPress={() => setProvider(item)}
+          >
+            <Text>{item}</Text>
+          </Pressable>
+        ))}
+      </View>
+
       {plans.map((plan) => {
         const expanded = !!open[plan.name];
-        return <View key={plan.name} style={styles.card}>
-          <Text style={styles.planName}>{plan.name}</Text><Text style={styles.price}>K{plan.price}</Text>
-          <Pressable style={styles.tab} onPress={() => setOpen((previous) => ({ ...previous, [plan.name]: !expanded }))}><Text style={styles.tabText}>VIEW FEATURES {expanded ? '▲' : '▼'}</Text></Pressable>
-          {expanded && plan.featureIndexes.map((index) => <Text key={index} style={styles.feature}>✅ {SECURITY_FEATURES[index]}</Text>)}
-          <Pressable style={[styles.button, busy && styles.disabled]} onPress={() => subscribe(plan)} disabled={!!busy}><Text style={styles.buttonText}>{busy === plan.name ? 'PROCESSING...' : plan.price ? `PAY K${plan.price}` : 'ACTIVATE FREE PLAN'}</Text></Pressable>
-        </View>;
+
+        return (
+          <View key={plan.name} style={styles.card}>
+            <Text style={styles.planName}>{plan.name}</Text>
+            <Text style={styles.price}>K{plan.price}</Text>
+
+            <Pressable style={styles.tab} onPress={() => setOpen((prev) => ({ ...prev, [plan.name]: !expanded }))}>
+              <Text style={styles.tabText}>VIEW FEATURES {expanded ? '▲' : '▼'}</Text>
+            </Pressable>
+
+            {expanded &&
+              plan.featureIndexes.map((index) => (
+                <Text key={index} style={styles.feature}>✅ {SECURITY_FEATURES[index]}</Text>
+              ))}
+
+            <Pressable
+              style={[styles.button, busy && styles.disabled]}
+              onPress={() => subscribe(plan)}
+              disabled={!!busy}
+            >
+              <Text style={styles.buttonText}>
+                {busy === plan.name ? 'PROCESSING...' : plan.price ? `PAY K${plan.price}` : 'ACTIVATE FREE PLAN'}
+              </Text>
+            </Pressable>
+          </View>
+        );
       })}
     </ScrollView>
   );

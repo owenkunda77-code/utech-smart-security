@@ -63,12 +63,7 @@ Use white cards on the blue background.
 - Payment initiation should call a Supabase Edge Function such as `initiatePayment(phone, amount=25, method)`.
 - The Edge Function is responsible for securely integrating the applicable MTN MoMo, Airtel Money, Zamtel, or card provider and triggering the provider's authorization prompt.
 - Never store mobile-money PINs, card CVV values, or secret provider credentials in the client application.
-- After successful confirmation, save a record to the Supabase `payments` table with:
-  - `device_id`
-  - `phone`
-  - `method`
-  - `amount` (`25`)
-  - `status` (`success`)
+- After successful confirmation, save a record to the Supabase `payments` table with `device_id`, `phone`, `method`, `amount` (`25`), and `status` (`success`).
 - On failure, display: **Payment Failed**.
 - Do not report payment success until the server/provider confirms it. A simulator may be used for development until production provider credentials are configured.
 
@@ -76,27 +71,13 @@ Use white cards on the blue background.
 
 - Initially display: **Searching Database...**
 - Search the registered asset/stolen-asset database using the submitted `device_id`.
-- Show a clear result indicating whether the asset is:
-  - **SAFE / NOT REPORTED STOLEN**, or
-  - **REPORTED STOLEN / FLAGGED**
+- Show **SAFE / NOT REPORTED STOLEN** or **REPORTED STOLEN / FLAGGED**.
 - Display the asset identity, search timestamp, and payment reference where appropriate.
 - Only a successful payment and a clear database result may allow certificate generation.
 
 ### Safety Certificate
 
-For an asset that passes verification:
-
-- Provide a downloadable or printable **Safety Certificate**.
-- Include:
-  - Light Smart Asset Security branding
-  - U-Tech Enterprise attribution
-  - Device identity code
-  - Verification date and time
-  - Verification status
-  - Unique certificate/reference number
-  - QR code or verification link when supported
-- Store certificate metadata in Supabase and provide a way to verify the certificate later.
-- Do not issue a safety certificate for an asset marked stolen or flagged.
+For an asset that passes verification, provide a downloadable or printable certificate containing Light Smart Asset Security branding, U-Tech Enterprise attribution, device identity code, verification date and time, verification status, a unique certificate/reference number, and a QR code or verification link when supported. Store certificate metadata in Supabase and do not issue a certificate for an asset marked stolen or flagged.
 
 ## Existing Features
 
@@ -169,6 +150,86 @@ utech-smart-security/
 - Apply row-level security to payments, assets, and certificates in Supabase.
 - Record an audit trail for searches, payments, database status changes, and certificate issuance.
 - Do not allow clients to change payment status or asset safety status directly.
+
+## Lead Stage Architecture — Supabase + Firebase
+
+### Zambia — Verify Phones, Laptops, Vehicles, Pumps, Assets
+
+> **STATUS: LEAD STAGE - README READY - App Coming Next**
+
+This project is currently in LEAD documentation stage. App.js will come after this README is approved.
+
+### Architecture Decision
+
+Supabase and Firebase may work together in the future, but they have separate responsibilities:
+
+| Feature | Supabase | Firebase |
+|---------|----------|----------|
+| Job | Database for admins, devices, leads, payments, and certificates | Server integration for MTN/Airtel payment requests and notifications |
+| PIN prompt | Cannot directly push a mobile-money PIN prompt | Cloud Function can call approved provider APIs |
+| Lead stage | Save leads without payment | Not needed yet |
+| Payment stage | Store payment results and certificates | Trigger provider payment flows and return confirmed results |
+
+**Final decision:**
+
+- **LEAD STAGE NOW:** Use Supabase only to save leads.
+- **PAYMENT STAGE LATER:** Use Supabase plus Firebase or a Supabase Edge Function, subject to approved provider APIs and credentials.
+- Never claim that a PIN prompt or payment succeeded unless the server/provider confirms it.
+
+### Supabase SQL Schema
+
+Run the following once in the Supabase SQL Editor. These tables complement the existing requirements above and are intended for the lead-stage implementation.
+
+```sql
+-- LEADS TABLE - Everyone who enters Device ID before paying
+create table if not exists leads (
+  id uuid primary key default gen_random_uuid(),
+  device_id text,
+  phone text,
+  status text default 'LEAD',
+  created_at timestamp default now()
+);
+
+-- PAYMENTS TABLE - Only those who paid K25
+create table if not exists payments (
+  id uuid primary key default gen_random_uuid(),
+  device_id text,
+  phone text,
+  method text, -- MTN Mobile Money, Airtel Money, Zamtel Kwacha, Card/Bank
+  amount int default 25,
+  status text default 'SUCCESS',
+  created_at timestamp default now()
+);
+
+-- ADMINS TABLE - Admin system with PENDING/DENIED and double-lock support
+create table if not exists admins (
+  id uuid primary key default gen_random_uuid(),
+  name text,
+  phone text unique,
+  personal_password text,
+  role text default 'Agent',
+  permissions jsonb default '[]'::jsonb,
+  status text default 'PENDING',
+  created_at timestamp default now()
+);
+
+-- DEVICES TABLE - Stolen / clean database
+create table if not exists devices (
+  id uuid primary key default gen_random_uuid(),
+  device_id text unique,
+  status text default 'CLEAN',
+  created_at timestamp default now()
+);
+```
+
+### Lead-Stage Rules
+
+- Save a lead when a visitor submits a device identity, before any payment is requested.
+- Do not create a successful payment row until payment is confirmed by a trusted server-side provider response.
+- Keep admin passwords and provider credentials out of the client and out of the README.
+- Use `CLEAN` and `STOLEN` as controlled device statuses, with server-side authorization for changes.
+- Add Supabase Row Level Security policies before exposing these tables to a production client.
+- Do not issue a safety certificate during lead stage without a confirmed payment and a clear device result.
 
 ## Installation & Setup
 

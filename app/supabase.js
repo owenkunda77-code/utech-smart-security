@@ -40,7 +40,24 @@ export async function loadPlans() {
   });
 }
 
-export async function saveSubscription({ deviceId, plan, permissionsGranted }) {
+export async function createPayment({ deviceId, plan, phoneNumber, provider }) {
+  const idempotencyKey = `${deviceId || 'unknown'}-${plan.name}-${Date.now()}`;
+  const { data, error } = await supabase.functions.invoke('create-payment', {
+    body: { deviceId, plan: plan.name, phoneNumber, provider, idempotencyKey },
+  });
+  return { data, error };
+}
+
+export async function getPaymentStatus(paymentId) {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('id, status, provider_reference, paid_at, failure_reason')
+    .eq('id', paymentId)
+    .single();
+  return { data, error };
+}
+
+export async function saveSubscription({ deviceId, plan, permissionsGranted, paymentId }) {
   const { data: userData } = await supabase.auth.getUser();
   const { error } = await supabase.from('subscriptions').insert({
     device_id: deviceId,
@@ -48,6 +65,7 @@ export async function saveSubscription({ deviceId, plan, permissionsGranted }) {
     amount: plan.price,
     features: plan.featureIndexes.map((index) => SECURITY_FEATURES[index]),
     permissions_granted: permissionsGranted,
+    payment_id: paymentId || null,
     status: 'active',
     user_id: userData?.user?.id || null,
   });

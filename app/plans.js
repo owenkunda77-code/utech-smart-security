@@ -1,11 +1,91 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Location from 'expo-location';
 import { Camera } from 'expo-camera';
 import { Accelerometer } from 'expo-sensors';
 import { Audio } from 'expo-av';
-import { DEFAULT_PLANS, SECURITY_FEATURES, loadPlans, saveSubscription, sendDeviceCommand } from './supabase';
-const BLUE='#0A3D8A'; const ACTION_BLUE='#0A84FF';
-async function requestPermissions(plan){const granted={}; if(plan.permissions.includes('camera')){const r=await Camera.requestCameraPermissionsAsync();if(r.status!=='granted')throw Error('Camera permission denied.');granted.camera=true;}if(plan.permissions.includes('location')){const r=await Location.requestForegroundPermissionsAsync();if(r.status!=='granted')throw Error('Location permission denied.');granted.location=true;}if(plan.permissions.includes('sensors')){const s=Accelerometer.addListener(()=>{});s.remove();granted.sensors=true;}if(plan.permissions.includes('microphone')){const r=await Audio.requestPermissionsAsync();if(r.status!=='granted')throw Error('Microphone permission denied.');granted.microphone=true;}return granted;}
-export default function PlansScreen({onBack,deviceId='demo-device'}){const [plans,setPlans]=useState(DEFAULT_PLANS);const [busy,setBusy]=useState(null);const [open,setOpen]=useState({});useEffect(()=>{loadPlans().then(setPlans).catch(()=>{});},[]);const subscribe=async plan=>{setBusy(plan.name);try{const p=await requestPermissions(plan);const {error}=await saveSubscription({deviceId,plan,permissionsGranted:p});if(error)throw error;Alert.alert('Subscription active',`${plan.name} saved in Supabase.`);}catch(e){Alert.alert('Subscription failed',e.message||'Try again.');}finally{setBusy(null);}};const ring=async plan=>{const {error}=await sendDeviceCommand(deviceId,'RING');if(error)Alert.alert('Command failed',error.message);else Alert.alert('Command queued',`RING queued for ${plan.name}. A device agent must receive it.`);};return <ScrollView style={styles.screen} contentContainerStyle={styles.content}><Pressable style={styles.back} onPress={onBack}><Text style={styles.white}>Back</Text></Pressable><Text style={styles.title}>Security Plans</Text>{plans.map(plan=><View key={plan.name} style={styles.card}><Text style={styles.name}>{plan.name}</Text><Text style={styles.price}>K{plan.price}</Text><Pressable style={styles.tab} onPress={()=>setOpen(v=>({...v,[plan.name]:!v[plan.name]}))}><Text style={styles.tabText}>MISPLACED MODE {open[plan.name]?'▲':'▼'}</Text></Pressable>{open[plan.name]&&<View style={styles.box}><Text>Paid plans queue a RING command in Supabase. Device-side service is required to play sound.</Text>{plan.misplacedMode?<Pressable style={styles.ring} onPress={()=>ring(plan)}><Text style={styles.white}>RING MY PHONE</Text></Pressable>:<Text>Available on paid plans.</Text>}</View>}{SECURITY_FEATURES.map((f,i)=><Text key={f} style={styles.feature}>{plan.featureIndexes.includes(i)?'✅':'❌'} {f}</Text>)}<Pressable style={styles.button} onPress={()=>subscribe(plan)} disabled={!!busy}><Text style={styles.white}>{busy===plan.name?'SAVING...':`SUBSCRIBE K${plan.price}`}</Text></Pressable></View>)}</ScrollView>}
-const styles=StyleSheet.create({screen:{flex:1,backgroundColor:BLUE},content:{padding:16,paddingBottom:40},back:{backgroundColor:ACTION_BLUE,padding:10,borderRadius:10,alignSelf:'flex-start',marginBottom:12},white:{color:'#fff',fontWeight:'800'},title:{color:'#fff',fontSize:30,fontWeight:'800',marginBottom:16},card:{backgroundColor:'#fff',borderRadius:16,padding:18,marginBottom:16},name:{color:BLUE,fontSize:23,fontWeight:'800'},price:{color:ACTION_BLUE,fontSize:28,fontWeight:'800'},tab:{backgroundColor:'#e9f2ff',padding:12,borderRadius:8,marginVertical:10},tabText:{color:BLUE,fontWeight:'800'},box:{backgroundColor:'#f5f9ff',padding:12,marginBottom:10},ring:{backgroundColor:BLUE,padding:12,borderRadius:8,marginTop:10,alignItems:'center'},feature:{color:'#172033',marginVertical:4},button:{backgroundColor:ACTION_BLUE,padding:14,borderRadius:10,alignItems:'center',marginTop:12}});
+import { DEFAULT_PLANS, SECURITY_FEATURES, createPayment, loadPlans, saveSubscription } from './supabase';
+
+const BLUE = '#0A3D8A';
+const ACTION_BLUE = '#0A84FF';
+const PROVIDERS = ['MTN Mobile Money', 'Airtel Money', 'Zamtel Kwacha'];
+
+async function requestPermissions(plan) {
+  const granted = {};
+  if (plan.permissions.includes('camera')) {
+    const result = await Camera.requestCameraPermissionsAsync();
+    if (result.status !== 'granted') throw new Error('Camera permission was not granted.');
+    granted.camera = true;
+  }
+  if (plan.permissions.includes('location')) {
+    const result = await Location.requestForegroundPermissionsAsync();
+    if (result.status !== 'granted') throw new Error('Location permission was not granted.');
+    granted.location = true;
+  }
+  if (plan.permissions.includes('sensors')) {
+    const subscription = Accelerometer.addListener(() => {});
+    subscription.remove();
+    granted.sensors = true;
+  }
+  if (plan.permissions.includes('microphone')) {
+    const result = await Audio.requestPermissionsAsync();
+    if (result.status !== 'granted') throw new Error('Microphone permission was not granted.');
+    granted.microphone = true;
+  }
+  return granted;
+}
+
+export default function PlansScreen({ onBack, deviceId = 'demo-device' }) {
+  const [plans, setPlans] = useState(DEFAULT_PLANS);
+  const [busy, setBusy] = useState(null);
+  const [open, setOpen] = useState({});
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [provider, setProvider] = useState(PROVIDERS[0]);
+
+  useEffect(() => { loadPlans().then(setPlans); }, []);
+
+  const subscribe = async (plan) => {
+    setBusy(plan.name);
+    try {
+      const permissionsGranted = await requestPermissions(plan);
+      if (plan.price === 0) {
+        const result = await saveSubscription({ deviceId, plan, permissionsGranted });
+        if (result.error) throw result.error;
+        Alert.alert('Subscription active', `${plan.name} is now active.`);
+        return;
+      }
+      if (!phoneNumber.trim()) throw new Error('Enter the mobile-money number to charge.');
+      const payment = await createPayment({ deviceId, plan, phoneNumber: phoneNumber.trim(), provider });
+      if (payment.error) throw payment.error;
+      Alert.alert('Payment requested', payment.data?.message || 'Approve the payment request on your phone. Your plan will activate after provider confirmation.');
+    } catch (error) {
+      Alert.alert('Payment not completed', error?.message || 'Please try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <Text style={styles.title}>Security Plans</Text>
+      <Text style={styles.subtitle}>Real payment requests use Supabase Edge Functions. No payment is simulated.</Text>
+      <Pressable style={styles.back} onPress={onBack}><Text style={styles.buttonText}>Back</Text></Pressable>
+      <TextInput style={styles.input} value={phoneNumber} onChangeText={setPhoneNumber} placeholder="Mobile-money number e.g. 097xxxxxxx" keyboardType="phone-pad" />
+      <Text style={styles.label}>Payment provider</Text>
+      <View style={styles.providerRow}>{PROVIDERS.map((item) => <Pressable key={item} style={[styles.provider, provider === item && styles.selected]} onPress={() => setProvider(item)}><Text>{item}</Text></Pressable>)}</View>
+      {plans.map((plan) => {
+        const expanded = !!open[plan.name];
+        return <View key={plan.name} style={styles.card}>
+          <Text style={styles.planName}>{plan.name}</Text><Text style={styles.price}>K{plan.price}</Text>
+          <Pressable style={styles.tab} onPress={() => setOpen((previous) => ({ ...previous, [plan.name]: !expanded }))}><Text style={styles.tabText}>VIEW FEATURES {expanded ? '▲' : '▼'}</Text></Pressable>
+          {expanded && plan.featureIndexes.map((index) => <Text key={index} style={styles.feature}>✅ {SECURITY_FEATURES[index]}</Text>)}
+          <Pressable style={[styles.button, busy && styles.disabled]} onPress={() => subscribe(plan)} disabled={!!busy}><Text style={styles.buttonText}>{busy === plan.name ? 'PROCESSING...' : plan.price ? `PAY K${plan.price}` : 'ACTIVATE FREE PLAN'}</Text></Pressable>
+        </View>;
+      })}
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: BLUE }, content: { padding: 16, paddingBottom: 40 }, title: { color: '#fff', fontSize: 30, fontWeight: '800', marginTop: 18 }, subtitle: { color: '#dce9ff', marginBottom: 18 }, back: { backgroundColor: ACTION_BLUE, borderRadius: 10, padding: 10, alignSelf: 'flex-start', marginBottom: 14 }, input: { backgroundColor: '#fff', borderRadius: 10, padding: 13, marginBottom: 10 }, label: { color: '#fff', fontWeight: '700', marginBottom: 6 }, providerRow: { gap: 6, marginBottom: 16 }, provider: { backgroundColor: '#fff', padding: 10, borderRadius: 8 }, selected: { backgroundColor: '#9dccff' }, card: { backgroundColor: '#fff', borderRadius: 16, padding: 18, marginBottom: 18 }, planName: { color: BLUE, fontSize: 23, fontWeight: '800' }, price: { color: ACTION_BLUE, fontSize: 28, fontWeight: '800' }, tab: { backgroundColor: '#e9f2ff', borderRadius: 8, padding: 12, marginVertical: 10 }, tabText: { color: BLUE, fontWeight: '800' }, feature: { color: '#172033', lineHeight: 20, marginVertical: 3 }, button: { backgroundColor: ACTION_BLUE, borderRadius: 10, padding: 15, marginTop: 16, alignItems: 'center' }, disabled: { opacity: 0.6 }, buttonText: { color: '#fff', fontWeight: '800' },
+});

@@ -1,0 +1,10 @@
+import React, { useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { supabase } from './supabase';
+const BLUE='#0A3D8A'; const ACTION_BLUE='#0A84FF';
+export default function LoginScreen({ onBack, onRegister, onLoggedIn }) {
+  const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [busy,setBusy]=useState(false);
+  const login=async()=>{ if(!email||!password)return Alert.alert('Missing details','Enter email and password.'); setBusy(true); const {error}=await supabase.auth.signInWithPassword({email:email.trim(),password}); setBusy(false); if(error)return Alert.alert('Login failed',error.message); onLoggedIn?.(); };
+  return <ScrollView style={styles.screen} contentContainerStyle={styles.content}><Pressable style={styles.back} onPress={onBack}><Text style={styles.white}>Back</Text></Pressable><View style={styles.card}><Text style={styles.title}>Login</Text><TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Email" autoCapitalize="none" keyboardType="email-address"/><TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="Password" secureTextEntry/><Pressable style={styles.button} onPress={login} disabled={busy}><Text style={styles.white}>{busy?'SIGNING IN...':'LOGIN'}</Text></Pressable><Pressable onPress={onRegister}><Text style={styles.link}>Create account</Text></Pressable></View></ScrollView>;
+}
+const styles=StyleSheet.create({screen:{flex:1,backgroundColor:BLUE},content:{padding:20},back:{backgroundColor:ACTION_BLUE,padding:10,borderRadius:10,alignSelf:'flex-start',marginBottom:18},white:{color:'#fff',fontWeight:'800'},card:{backgroundColor:'#fff',borderRadius:16,padding:20},title:{color:BLUE,fontSize:28,fontWeight:'800',marginBottom:16},input:{borderWidth:1,borderColor:'#d8e4f7',borderRadius:10,padding:12,marginBottom:14},button:{backgroundColor:ACTION_BLUE,padding:14,borderRadius:10,alignItems:'center'},link:{color:BLUE,textAlign:'center',fontWeight:'700',marginTop:16}});

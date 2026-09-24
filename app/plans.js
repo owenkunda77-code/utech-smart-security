@@ -5,8 +5,8 @@ import { Camera } from 'expo-camera';
 import { Accelerometer } from 'expo-sensors';
 import { Audio } from 'expo-av';
 
-// Pass the existing Supabase client and a device_id from the current app.
-// Permission prompts are shown only after the user explicitly subscribes.
+// Pass the configured Supabase client from the existing app. Do not put real
+// Supabase credentials in source code; use environment/configuration instead.
 const BLUE = '#0A3D8A';
 const ACTION_BLUE = '#0A84FF';
 
@@ -39,25 +39,30 @@ async function requestPlanPermissions(plan) {
 
   if (plan.permissions.includes('camera')) {
     const result = await Camera.requestCameraPermissionsAsync();
-    if (result.status !== 'granted') throw new Error('Camera permission is required for Intruder Selfie and Live Camera.');
+    if (result.status !== 'granted') throw new Error('Denied — accept Camera access for Intruder Selfie and Live Camera.');
     granted.camera = true;
   }
+
   if (plan.permissions.includes('location')) {
     const result = await Location.requestForegroundPermissionsAsync();
-    if (result.status !== 'granted') throw new Error('Location permission is required for Real-Time GPS Tracking.');
+    if (result.status !== 'granted') throw new Error('Denied — accept Location access for Real-Time Tracking.');
     granted.location = true;
   }
+
   if (plan.permissions.includes('sensors')) {
-    // Accelerometer has no runtime permission on supported Expo platforms.
+    // Accelerometer does not require a runtime permission on supported Expo platforms.
+    // Starting and immediately removing this listener verifies sensor availability.
     const subscription = Accelerometer.addListener(() => {});
     subscription.remove();
     granted.sensors = true;
   }
+
   if (plan.permissions.includes('microphone')) {
     const result = await Audio.requestPermissionsAsync();
-    if (result.status !== 'granted') throw new Error('Microphone permission is required for Live Audio.');
+    if (result.status !== 'granted') throw new Error('Denied — accept Microphone access for Live Audio.');
     granted.microphone = true;
   }
+
   return granted;
 }
 
@@ -69,9 +74,12 @@ export default function Plans({ supabase, deviceId, navigation }) {
       Alert.alert('Setup required', 'Connect Supabase and provide the asset device ID before subscribing.');
       return;
     }
+
     setBusyPlan(plan.name);
     try {
+      Alert.alert(`Subscribing ${plan.name}`, 'Checking permissions for your selected security features.');
       const permissionsGranted = await requestPlanPermissions(plan);
+
       const { error } = await supabase.from('subscriptions').insert({
         device_id: deviceId,
         plan: plan.name,
@@ -81,10 +89,11 @@ export default function Plans({ supabase, deviceId, navigation }) {
         status: 'active',
       });
       if (error) throw error;
-      Alert.alert('Subscription active', `${plan.name} is now active.`);
+
+      Alert.alert('Subscription active', `${plan.name} is now active. Monitoring features can now be started.`);
       navigation?.navigate?.('Dashboard', { deviceId, plan: plan.name, permissionsGranted });
     } catch (error) {
-      Alert.alert('Subscription not completed', error.message || 'Please try again.');
+      Alert.alert('Subscription not completed', error?.message || 'Please try again.');
     } finally {
       setBusyPlan(null);
     }
@@ -94,18 +103,30 @@ export default function Plans({ supabase, deviceId, navigation }) {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Security Plans</Text>
       <Text style={styles.subtitle}>Light Smart Asset Security · Zambia</Text>
-      {PLANS.slice(1).map((plan) => (
+
+      {PLANS.map((plan) => (
         <View key={plan.name} style={styles.card}>
           <Text style={styles.planName}>{plan.name}</Text>
           <Text style={styles.price}>K{plan.price}</Text>
+          <Text style={styles.permissions}>
+            Permissions: {plan.permissions.length ? plan.permissions.join(', ') : 'None required'}
+          </Text>
+
           {SECURITY_FEATURES.map((feature, index) => (
             <View key={feature} style={styles.featureRow}>
               <Text style={styles.tick}>{plan.featureIndexes.includes(index) ? '✅' : '❌'}</Text>
               <Text style={styles.feature}>{feature}</Text>
             </View>
           ))}
-          <Pressable style={styles.button} onPress={() => subscribe(plan)} disabled={busyPlan !== null}>
-            <Text style={styles.buttonText}>{busyPlan === plan.name ? 'REQUESTING ACCESS...' : `SUBSCRIBE K${plan.price}`}</Text>
+
+          <Pressable
+            style={[styles.button, busyPlan !== null && styles.disabledButton]}
+            onPress={() => subscribe(plan)}
+            disabled={busyPlan !== null}
+          >
+            <Text style={styles.buttonText}>
+              {busyPlan === plan.name ? 'REQUESTING ACCESS...' : `SUBSCRIBE K${plan.price}`}
+            </Text>
           </Pressable>
         </View>
       ))}
@@ -120,10 +141,12 @@ const styles = StyleSheet.create({
   subtitle: { color: '#dce9ff', marginBottom: 18 },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 18, marginBottom: 18 },
   planName: { color: BLUE, fontSize: 23, fontWeight: '800' },
-  price: { color: ACTION_BLUE, fontSize: 28, fontWeight: '800', marginBottom: 12 },
+  price: { color: ACTION_BLUE, fontSize: 28, fontWeight: '800', marginBottom: 4 },
+  permissions: { color: '#53627a', fontSize: 12, marginBottom: 12 },
   featureRow: { flexDirection: 'row', alignItems: 'flex-start', marginVertical: 5 },
   tick: { width: 28 },
   feature: { flex: 1, color: '#172033', lineHeight: 20 },
   button: { backgroundColor: ACTION_BLUE, borderRadius: 10, padding: 15, marginTop: 16, alignItems: 'center' },
+  disabledButton: { opacity: 0.6 },
   buttonText: { color: '#fff', fontWeight: '800' },
 });

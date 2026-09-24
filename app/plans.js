@@ -4,11 +4,11 @@ import * as Location from 'expo-location';
 import { Camera } from 'expo-camera';
 import { Accelerometer } from 'expo-sensors';
 import { Audio } from 'expo-av';
-import { DEFAULT_PLANS, SECURITY_FEATURES, createPayment, loadPlans, saveSubscription } from './supabase';
+import { DEFAULT_PLANS, SECURITY_FEATURES, loadPlans, requestDpoPayment, saveSubscription } from './supabase';
 
 const BLUE = '#0A3D8A';
 const ACTION_BLUE = '#0A84FF';
-const PROVIDERS = ['MTN Mobile Money', 'Airtel Money', 'Zamtel Kwacha'];
+const PROVIDERS = ['DPO', 'MTN Mobile Money', 'Airtel Money', 'Zamtel Kwacha'];
 
 async function requestPermissions(plan) {
   const granted = {};
@@ -40,7 +40,7 @@ export default function PlansScreen({ onBack, deviceId = 'demo-device' }) {
   const [busy, setBusy] = useState(null);
   const [open, setOpen] = useState({});
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [provider, setProvider] = useState(PROVIDERS[0]);
+  const [provider, setProvider] = useState('DPO');
 
   useEffect(() => { loadPlans().then(setPlans); }, []);
 
@@ -54,10 +54,11 @@ export default function PlansScreen({ onBack, deviceId = 'demo-device' }) {
         Alert.alert('Subscription active', `${plan.name} is now active.`);
         return;
       }
-      if (!phoneNumber.trim()) throw new Error('Enter the mobile-money number to charge.');
-      const payment = await createPayment({ deviceId, plan, phoneNumber: phoneNumber.trim(), provider });
+      if (!phoneNumber.trim()) throw new Error('Enter the mobile number or payment number for the selected provider.');
+      const providerKey = provider === 'DPO' ? 'dpo' : provider === 'MTN Mobile Money' ? 'mtn_momo' : provider === 'Airtel Money' ? 'airtel_money' : 'zamtel_kwacha';
+      const payment = await requestDpoPayment({ deviceId, plan, phoneNumber: phoneNumber.trim(), provider: providerKey });
       if (payment.error) throw payment.error;
-      Alert.alert('Payment requested', payment.data?.message || 'Approve the payment request on your phone. Your plan will activate after provider confirmation.');
+      Alert.alert('Payment requested', payment.data?.message || 'Your payment request has been sent. Please wait for confirmation.');
     } catch (error) {
       Alert.alert('Payment not completed', error?.message || 'Please try again.');
     } finally {
@@ -68,9 +69,9 @@ export default function PlansScreen({ onBack, deviceId = 'demo-device' }) {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Security Plans</Text>
-      <Text style={styles.subtitle}>Real payment requests use Supabase Edge Functions. No payment is simulated.</Text>
+      <Text style={styles.subtitle}>Zambia-first payment flow using DPO and mobile money providers.</Text>
       <Pressable style={styles.back} onPress={onBack}><Text style={styles.buttonText}>Back</Text></Pressable>
-      <TextInput style={styles.input} value={phoneNumber} onChangeText={setPhoneNumber} placeholder="Mobile-money number e.g. 097xxxxxxx" keyboardType="phone-pad" />
+      <TextInput style={styles.input} value={phoneNumber} onChangeText={setPhoneNumber} placeholder="Payment number e.g. 097xxxxxxx" keyboardType="phone-pad" />
       <Text style={styles.label}>Payment provider</Text>
       <View style={styles.providerRow}>{PROVIDERS.map((item) => <Pressable key={item} style={[styles.provider, provider === item && styles.selected]} onPress={() => setProvider(item)}><Text>{item}</Text></Pressable>)}</View>
       {plans.map((plan) => {
@@ -87,5 +88,23 @@ export default function PlansScreen({ onBack, deviceId = 'demo-device' }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: BLUE }, content: { padding: 16, paddingBottom: 40 }, title: { color: '#fff', fontSize: 30, fontWeight: '800', marginTop: 18 }, subtitle: { color: '#dce9ff', marginBottom: 18 }, back: { backgroundColor: ACTION_BLUE, borderRadius: 10, padding: 10, alignSelf: 'flex-start', marginBottom: 14 }, input: { backgroundColor: '#fff', borderRadius: 10, padding: 13, marginBottom: 10 }, label: { color: '#fff', fontWeight: '700', marginBottom: 6 }, providerRow: { gap: 6, marginBottom: 16 }, provider: { backgroundColor: '#fff', padding: 10, borderRadius: 8 }, selected: { backgroundColor: '#9dccff' }, card: { backgroundColor: '#fff', borderRadius: 16, padding: 18, marginBottom: 18 }, planName: { color: BLUE, fontSize: 23, fontWeight: '800' }, price: { color: ACTION_BLUE, fontSize: 28, fontWeight: '800' }, tab: { backgroundColor: '#e9f2ff', borderRadius: 8, padding: 12, marginVertical: 10 }, tabText: { color: BLUE, fontWeight: '800' }, feature: { color: '#172033', lineHeight: 20, marginVertical: 3 }, button: { backgroundColor: ACTION_BLUE, borderRadius: 10, padding: 15, marginTop: 16, alignItems: 'center' }, disabled: { opacity: 0.6 }, buttonText: { color: '#fff', fontWeight: '800' },
+  screen: { flex: 1, backgroundColor: BLUE },
+  content: { padding: 16, paddingBottom: 40 },
+  title: { color: '#fff', fontSize: 30, fontWeight: '800', marginTop: 18 },
+  subtitle: { color: '#dce9ff', marginBottom: 18 },
+  back: { backgroundColor: ACTION_BLUE, borderRadius: 10, padding: 10, alignSelf: 'flex-start', marginBottom: 14 },
+  input: { backgroundColor: '#fff', borderRadius: 10, padding: 13, marginBottom: 10 },
+  label: { color: '#fff', fontWeight: '700', marginBottom: 6 },
+  providerRow: { gap: 6, marginBottom: 16 },
+  provider: { backgroundColor: '#fff', padding: 10, borderRadius: 8 },
+  selected: { backgroundColor: '#9dccff' },
+  card: { backgroundColor: '#fff', borderRadius: 16, padding: 18, marginBottom: 18 },
+  planName: { color: BLUE, fontSize: 23, fontWeight: '800' },
+  price: { color: ACTION_BLUE, fontSize: 28, fontWeight: '800' },
+  tab: { backgroundColor: '#e9f2ff', borderRadius: 8, padding: 12, marginVertical: 10 },
+  tabText: { color: BLUE, fontWeight: '800' },
+  feature: { color: '#172033', lineHeight: 20, marginVertical: 3 },
+  button: { backgroundColor: ACTION_BLUE, borderRadius: 10, padding: 15, marginTop: 16, alignItems: 'center' },
+  disabled: { opacity: 0.6 },
+  buttonText: { color: '#fff', fontWeight: '800' },
 });

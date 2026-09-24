@@ -40,20 +40,11 @@ export async function loadPlans() {
   });
 }
 
-export async function createPayment({ deviceId, plan, phoneNumber, provider }) {
+export async function requestDpoPayment({ deviceId, plan, phoneNumber, provider = 'dpo' }) {
   const idempotencyKey = `${deviceId || 'unknown'}-${plan.name}-${Date.now()}`;
   const { data, error } = await supabase.functions.invoke('create-payment', {
     body: { deviceId, plan: plan.name, phoneNumber, provider, idempotencyKey },
   });
-  return { data, error };
-}
-
-export async function getPaymentStatus(paymentId) {
-  const { data, error } = await supabase
-    .from('payments')
-    .select('id, status, provider_reference, paid_at, failure_reason')
-    .eq('id', paymentId)
-    .single();
   return { data, error };
 }
 

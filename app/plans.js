@@ -27,11 +27,16 @@ export const SECURITY_FEATURES = [
   'Live Camera & Mic Access',
 ];
 
+const MISPLACED_MODE = {
+  name: 'Misplaced Mode',
+  description: 'Send a loud ring command to help find a misplaced phone, even when it is muted where the platform and device settings allow it.',
+};
+
 export const PLANS = [
-  { name: 'LEAD / FREE', price: 0, featureIndexes: [0, 1, 2], permissions: [] },
-  { name: 'BASIC', price: 25, featureIndexes: [0, 1, 2, 3, 9, 10, 11], permissions: ['location'] },
-  { name: 'STANDARD', price: 75, featureIndexes: [0, 1, 2, 3, 4, 5, 6, 9, 10, 11, 12], permissions: ['location', 'sensors'] },
-  { name: 'PREMIUM', price: 150, featureIndexes: SECURITY_FEATURES.map((_, index) => index), permissions: ['camera', 'location', 'sensors', 'microphone'] },
+  { name: 'FREE', price: 0, featureIndexes: [0, 1, 2], permissions: [], misplacedMode: false },
+  { name: 'ECONOMY', price: 25, featureIndexes: [0, 1, 2, 3, 9, 10, 11], permissions: ['location'], misplacedMode: true },
+  { name: 'STANDARD', price: 75, featureIndexes: [0, 1, 2, 3, 4, 5, 6, 9, 10, 11, 12], permissions: ['location', 'sensors'], misplacedMode: true },
+  { name: 'PREMIUM', price: 150, featureIndexes: SECURITY_FEATURES.map((_, index) => index), permissions: ['camera', 'location', 'sensors', 'microphone'], misplacedMode: true },
 ];
 
 async function requestPlanPermissions(plan) {
@@ -42,44 +47,37 @@ async function requestPlanPermissions(plan) {
     if (result.status !== 'granted') throw new Error('Denied — accept Camera access for Intruder Selfie and Live Camera.');
     granted.camera = true;
   }
-
   if (plan.permissions.includes('location')) {
     const result = await Location.requestForegroundPermissionsAsync();
     if (result.status !== 'granted') throw new Error('Denied — accept Location access for Real-Time Tracking.');
     granted.location = true;
   }
-
   if (plan.permissions.includes('sensors')) {
-    // Accelerometer does not require a runtime permission on supported Expo platforms.
-    // Starting and immediately removing this listener verifies sensor availability.
     const subscription = Accelerometer.addListener(() => {});
     subscription.remove();
     granted.sensors = true;
   }
-
   if (plan.permissions.includes('microphone')) {
     const result = await Audio.requestPermissionsAsync();
     if (result.status !== 'granted') throw new Error('Denied — accept Microphone access for Live Audio.');
     granted.microphone = true;
   }
-
   return granted;
 }
 
 export default function Plans({ supabase, deviceId, navigation }) {
   const [busyPlan, setBusyPlan] = useState(null);
+  const [openTab, setOpenTab] = useState({});
 
   const subscribe = async (plan) => {
     if (!supabase || !deviceId) {
       Alert.alert('Setup required', 'Connect Supabase and provide the asset device ID before subscribing.');
       return;
     }
-
     setBusyPlan(plan.name);
     try {
       Alert.alert(`Subscribing ${plan.name}`, 'Checking permissions for your selected security features.');
       const permissionsGranted = await requestPlanPermissions(plan);
-
       const { error } = await supabase.from('subscriptions').insert({
         device_id: deviceId,
         plan: plan.name,
@@ -89,8 +87,7 @@ export default function Plans({ supabase, deviceId, navigation }) {
         status: 'active',
       });
       if (error) throw error;
-
-      Alert.alert('Subscription active', `${plan.name} is now active. Monitoring features can now be started.`);
+      Alert.alert('Subscription active', `${plan.name} is now active.`);
       navigation?.navigate?.('Dashboard', { deviceId, plan: plan.name, permissionsGranted });
     } catch (error) {
       Alert.alert('Subscription not completed', error?.message || 'Please try again.');
@@ -99,37 +96,64 @@ export default function Plans({ supabase, deviceId, navigation }) {
     }
   };
 
+  const ringPhone = async (plan) => {
+    if (!supabase || !deviceId) {
+      Alert.alert('Setup required', 'Connect Supabase and provide the asset device ID first.');
+      return;
+    }
+    try {
+      const { error } = await supabase.from('device_commands').insert({
+        device_id: deviceId,
+        command: 'RING',
+        requested_by_plan: plan.name,
+        status: 'pending',
+      });
+      if (error) throw error;
+      Alert.alert('Ring command sent', 'The phone will ring when its trusted device service receives the command. Some operating systems may not override Silent or Do Not Disturb mode.');
+    } catch (error) {
+      Alert.alert('Could not ring phone', error?.message || 'Please try again.');
+    }
+  };
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Security Plans</Text>
       <Text style={styles.subtitle}>Light Smart Asset Security · Zambia</Text>
+      {PLANS.map((plan) => {
+        const tabOpen = openTab[plan.name] === true;
+        return (
+          <View key={plan.name} style={styles.card}>
+            <Text style={styles.planName}>{plan.name}</Text>
+            <Text style={styles.price}>K{plan.price}</Text>
+            <Text style={styles.permissions}>Permissions: {plan.permissions.length ? plan.permissions.join(', ') : 'None required'}</Text>
 
-      {PLANS.map((plan) => (
-        <View key={plan.name} style={styles.card}>
-          <Text style={styles.planName}>{plan.name}</Text>
-          <Text style={styles.price}>K{plan.price}</Text>
-          <Text style={styles.permissions}>
-            Permissions: {plan.permissions.length ? plan.permissions.join(', ') : 'None required'}
-          </Text>
+            <Pressable style={styles.tab} onPress={() => setOpenTab({ ...openTab, [plan.name]: !tabOpen })}>
+              <Text style={styles.tabText}>MISPLACED MODE {tabOpen ? '▲' : '▼'}</Text>
+            </Pressable>
+            {tabOpen && (
+              <View style={styles.misplacedBox}>
+                <Text style={styles.misplacedTitle}>{MISPLACED_MODE.name}</Text>
+                <Text style={styles.misplacedDescription}>{MISPLACED_MODE.description}</Text>
+                {plan.misplacedMode ? (
+                  <Pressable style={styles.ringButton} onPress={() => ringPhone(plan)}>
+                    <Text style={styles.buttonText}>🔔 RING MY PHONE</Text>
+                  </Pressable>
+                ) : <Text style={styles.unavailable}>Available on paid plans.</Text>}
+              </View>
+            )}
 
-          {SECURITY_FEATURES.map((feature, index) => (
-            <View key={feature} style={styles.featureRow}>
-              <Text style={styles.tick}>{plan.featureIndexes.includes(index) ? '✅' : '❌'}</Text>
-              <Text style={styles.feature}>{feature}</Text>
-            </View>
-          ))}
-
-          <Pressable
-            style={[styles.button, busyPlan !== null && styles.disabledButton]}
-            onPress={() => subscribe(plan)}
-            disabled={busyPlan !== null}
-          >
-            <Text style={styles.buttonText}>
-              {busyPlan === plan.name ? 'REQUESTING ACCESS...' : `SUBSCRIBE K${plan.price}`}
-            </Text>
-          </Pressable>
-        </View>
-      ))}
+            {SECURITY_FEATURES.map((feature, index) => (
+              <View key={feature} style={styles.featureRow}>
+                <Text style={styles.tick}>{plan.featureIndexes.includes(index) ? '✅' : '❌'}</Text>
+                <Text style={styles.feature}>{feature}</Text>
+              </View>
+            ))}
+            <Pressable style={[styles.button, busyPlan !== null && styles.disabledButton]} onPress={() => subscribe(plan)} disabled={busyPlan !== null}>
+              <Text style={styles.buttonText}>{busyPlan === plan.name ? 'REQUESTING ACCESS...' : `SUBSCRIBE K${plan.price}`}</Text>
+            </Pressable>
+          </View>
+        );
+      })}
     </ScrollView>
   );
 }
@@ -143,10 +167,17 @@ const styles = StyleSheet.create({
   planName: { color: BLUE, fontSize: 23, fontWeight: '800' },
   price: { color: ACTION_BLUE, fontSize: 28, fontWeight: '800', marginBottom: 4 },
   permissions: { color: '#53627a', fontSize: 12, marginBottom: 12 },
+  tab: { backgroundColor: '#e9f2ff', borderRadius: 8, padding: 12, marginBottom: 10 },
+  tabText: { color: BLUE, fontWeight: '800' },
+  misplacedBox: { backgroundColor: '#f5f9ff', borderLeftWidth: 4, borderLeftColor: ACTION_BLUE, padding: 12, marginBottom: 10 },
+  misplacedTitle: { color: BLUE, fontWeight: '800', fontSize: 17 },
+  misplacedDescription: { color: '#172033', lineHeight: 20, marginVertical: 6 },
+  unavailable: { color: '#53627a', fontStyle: 'italic' },
   featureRow: { flexDirection: 'row', alignItems: 'flex-start', marginVertical: 5 },
   tick: { width: 28 },
   feature: { flex: 1, color: '#172033', lineHeight: 20 },
   button: { backgroundColor: ACTION_BLUE, borderRadius: 10, padding: 15, marginTop: 16, alignItems: 'center' },
+  ringButton: { backgroundColor: BLUE, borderRadius: 10, padding: 13, marginTop: 8, alignItems: 'center' },
   disabledButton: { opacity: 0.6 },
   buttonText: { color: '#fff', fontWeight: '800' },
 });

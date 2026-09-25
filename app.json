@@ -9,13 +9,29 @@
       "**/*"
     ],
     "splash": {
-      "backgroundColor": "#0A3D8A"
+      "backgroundColor": "#0A3D8A",
+      "resizeMode": "contain"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.utech.lightsmartassetsecurity"
     },
     "android": {
-      "package": "com.utech.lightsmartassetsecurity"
+      "package": "com.utech.lightsmartassetsecurity",
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "RECORD_AUDIO",
+        "INTERNET",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "light-smart-asset-security"
+      }
     }
   }
 }
